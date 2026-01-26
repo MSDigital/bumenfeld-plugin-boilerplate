@@ -1,0 +1,6 @@
+# Example configuration for a simple "hello world" style plugin.
+plugin:
+  enabled: true
+  greeting: "Hello, world!"
+  language: en
+  announcement-channel: global-chat

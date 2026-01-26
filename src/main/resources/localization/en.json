@@ -1,0 +1,7 @@
+{
+  "language": "en",
+  "hello-world": {
+    "intro": "{greeting}",
+    "announce": "Text is sent to {channel} when the plugin starts."
+  }
+}

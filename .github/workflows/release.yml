@@ -1,0 +1,57 @@
+name: Release Template
+
+# Uncomment and adjust the following block when you turn this into a live project:
+# on:
+#   release:
+#     types: [published]
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build-and-publish:
+    name: Build and Upload Release Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set short commit SHA
+        run: echo "COMMIT_SHA_SHORT=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+
+      - name: Ensure Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Reset to tag commit
+        run: git reset --hard ${{ github.sha }}
+
+      - name: Build release with Gradle
+        run: ./gradlew --no-daemon clean release
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

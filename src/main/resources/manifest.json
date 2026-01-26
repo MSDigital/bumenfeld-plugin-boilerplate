@@ -1,0 +1,14 @@
+{
+  "Title": "Bumenfeld Plugin",
+  "Version": "0.1.0",
+  "id": "com.bumenfeld.plugin",
+  "Author": "msdigital",
+  "Description": "A starter manifest for new Hytale server plugins. Update `Title`, `Version`, and `Description` in each project.",
+  "MainEntryPoint": "com.bumenfeld.Application",
+  "MinimumServerVersion": "1.0.0",
+  "IncludesAssetPack": false,
+  "Permissions": [
+    "READ_SERVER_CONFIG",
+    "WRITE_PERMISSIONS"
+  ]
+}
