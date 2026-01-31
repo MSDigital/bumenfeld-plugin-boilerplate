@@ -1,4 +1,4 @@
-name: Gradle CI Template
+name: Gradle CI
 
 # Uncomment and adjust the following block when you turn this into a live project:
 # on:
@@ -8,8 +8,6 @@ name: Gradle CI Template
 #   pull_request:
 #     branches:
 #       - master
-on:
-  workflow_dispatch: {}
 
 jobs:
   build:

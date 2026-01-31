@@ -1,15 +1,13 @@
-name: Release Template
+name: Release Build
 
 # Uncomment and adjust the following block when you turn this into a live project:
 # on:
 #   release:
 #     types: [published]
-on:
-  workflow_dispatch: {}
 
-permissions:
-  contents: write
-  packages: read
+# permissions:
+#   contents: write
+#   packages: read
 
 jobs:
   build-and-publish:
@@ -31,14 +29,14 @@ jobs:
           java-version: 25
           cache: gradle
 
-      - name: Ensure Gradle wrapper executable
-        run: chmod +x gradlew
-
       - name: Reset to tag commit
         run: git reset --hard ${{ github.sha }}
 
+      - name: Ensure Gradle wrapper executable
+        run: chmod +x gradlew
+
       - name: Build release with Gradle
-        run: ./gradlew --no-daemon clean release
+        run: ./gradlew --no-daemon -PlocalVersion=${{ github.ref_name }} clean release
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
 

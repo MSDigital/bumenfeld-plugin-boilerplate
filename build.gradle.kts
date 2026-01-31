@@ -1,11 +1,13 @@
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.tasks.bundling.Jar
+import org.gradle.api.tasks.Copy
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.net.URL
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-
 plugins {
     java
     `maven-publish`
@@ -63,6 +65,58 @@ version = computedVersion
 val javaVersion = 25
 repositories {
     mavenCentral()
+    maven {
+        name = "hytale-release"
+        url = uri("https://maven.hytale.com/release")
+    }
+    maven {
+        name = "hytale-pre-release"
+        url = uri("https://maven.hytale.com/pre-release")
+    }
+}
+
+val serverVersionProperty = project.findProperty("server_version")?.toString()?.takeIf { it.isNotBlank() }
+val serverVersionResolved = resolveServerVersion(serverVersionProperty)
+val serverVersionManifest = formatManifestServerVersion(serverVersionResolved ?: serverVersionProperty)
+
+fun resolveServerVersion(raw: String?): String? {
+    if (raw == null) {
+        return null
+    }
+    if (raw != "*") {
+        return raw
+    }
+    return fetchLatestServerRelease()
+}
+
+fun fetchLatestServerRelease(): String? {
+    val metadataUrl = "https://maven.hytale.com/release/com/hypixel/hytale/Server/maven-metadata.xml"
+    return try {
+        val xml = URL(metadataUrl).readText()
+        Regex("<release>([^<]+)</release>").find(xml)?.groupValues?.get(1)
+            ?: Regex("<latest>([^<]+)</latest>").find(xml)?.groupValues?.get(1)
+    } catch (ex: IOException) {
+        logger.warn("Unable to fetch Hytale server metadata from $metadataUrl: ${ex.message}")
+        null
+    }
+}
+
+fun formatManifestServerVersion(value: String?): String? {
+    if (value == null) {
+        return null
+    }
+    val trimmed = value.trim()
+    if (trimmed == "*") {
+        return "*"
+    }
+    if (trimmed.startsWithAny(listOf("<", ">", "=", "~", "^", "[", "(", "x", "X")) || trimmed.contains(" ")) {
+        return trimmed
+    }
+    return ">=$trimmed"
+}
+
+fun String.startsWithAny(prefixes: List<String>): Boolean {
+    return prefixes.any { this.startsWith(it) }
 }
 
 dependencies {
@@ -74,7 +128,8 @@ dependencies {
 
     val enableHytalePlugin = project.findProperty("enable_hytale_plugin")?.toString()?.toBooleanStrictOrNull() ?: false
     if (enableHytalePlugin) {
-        compileOnly("com.hypixel.hytale:Server:latest.release")
+        val dependencyVersion = serverVersionResolved ?: "latest.release"
+        compileOnly("com.hypixel.hytale:Server:$dependencyVersion")
     }
 }
 
@@ -100,6 +155,30 @@ val gitRevision = runCatching {
         }
     }
 }.getOrDefault("unknown")
+val buildId = "$computedVersion-$buildTimestamp-$gitRevision"
+
+tasks.named<Copy>("processResources") {
+    val replaceProperties = mapOf(
+        "plugin_group" to findProperty("plugin_group"),
+        "plugin_maven_group" to findProperty("plugin_maven_group"),
+        "plugin_name" to findProperty("plugin_name"),
+        "plugin_version" to computedVersion,
+        "server_version" to serverVersionManifest,
+        "plugin_description" to findProperty("plugin_description"),
+        "plugin_website" to findProperty("plugin_website"),
+        "plugin_main_entrypoint" to findProperty("plugin_main_entrypoint"),
+        "plugin_author" to findProperty("plugin_author"),
+        "build_id" to buildId,
+        "git_revision" to gitRevision,
+        "build_timestamp" to buildTimestamp
+    )
+
+    filesMatching("manifest.json") {
+        expand(replaceProperties)
+    }
+
+    inputs.properties(replaceProperties)
+}
 
 tasks.withType<Jar> {
     manifest {
@@ -121,7 +200,7 @@ val includeDependenciesInJar = project.findProperty("fatJar")?.toString()?.toBoo
 
 val appJar = tasks.register<Jar>("appJar") {
     archiveClassifier.set("")
-    archiveBaseName.set("bumenfeld-boilerplate")
+    archiveBaseName.set("bumenfeld-death-announcer")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
 
@@ -143,6 +222,26 @@ val appJar = tasks.register<Jar>("appJar") {
     }
 }
 
+tasks.named<Copy>("processResources") {
+    // UI assets are loaded from resources/Common/UI/Custom as documented.
+}
+
+val deployOutputPath = providers.gradleProperty("deployOutputPath").orNull?.takeIf { it.isNotBlank() }
+val fallbackDeployDirectory = layout.buildDirectory.dir("deploy").get().asFile
+
+val deployJar = tasks.register<Copy>("deployJar") {
+    group = "build"
+    description = "Copy the packaged plugin jar to the directory provided by -PdeployOutputPath."
+    dependsOn(appJar)
+    onlyIf { deployOutputPath != null }
+    from(appJar.flatMap { it.archiveFile })
+    into(deployOutputPath?.let(::file) ?: fallbackDeployDirectory)
+    doFirst {
+        val jarFile = appJar.get().archiveFile.get().asFile
+        logger.lifecycle("Copying {} -> {}", jarFile.absolutePath, deployOutputPath ?: fallbackDeployDirectory)
+    }
+}
+
 tasks.named("build") {
     dependsOn(appJar)
 }
@@ -153,6 +252,12 @@ tasks.register("release") {
 
 tasks.named("assemble") {
     dependsOn(appJar)
+}
+
+listOf("build", "release", "assemble").forEach { taskName ->
+    tasks.named(taskName) {
+        dependsOn(deployJar)
+    }
 }
 tasks.named("jar") {
     enabled = false
